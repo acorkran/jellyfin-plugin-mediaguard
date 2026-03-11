@@ -1,0 +1,20 @@
+[
+  {
+    "category": "General",
+    "guid": "a5d1e3b2-4f6c-8a9d-0e1f-2b3c4d5e6f7a",
+    "name": "MediarrGuard",
+    "description": "Detects corrupt or unplayable media files and automatically requests replacements from Sonarr and Radarr. Features reactive playback failure detection, proactive ffprobe integrity scanning, user notifications, and automatic library refresh.",
+    "owner": "acorkran",
+    "overview": "Automatic corrupt media detection and re-download via Sonarr/Radarr",
+    "versions": [
+      {
+        "checksum": "33ff7dc6678ef59c09edd47979646b9e",
+        "changelog": "Initial release with reactive monitoring, proactive scanning, user notifications, and automatic library refresh.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/acorkran/jellyfin-plugin-mediaguard/releases/download/v1.0.0/MediarrGuard-v1.0.0.zip",
+        "timestamp": "2026-03-11T00:00:00Z",
+        "version": "1.0.0.0"
+      }
+    ]
+  }
+]
