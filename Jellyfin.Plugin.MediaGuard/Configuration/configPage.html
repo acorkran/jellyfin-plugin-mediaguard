@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MediaGuard</title>
+</head>
+<body>
+    <div id="MediaGuardConfigPage" data-role="page" class="page type-interior pluginConfigurationPage"
+         data-require="emby-input,emby-button,emby-checkbox,emby-select">
+        <div data-role="content">
+            <div class="content-primary">
+                <form id="MediaGuardConfigForm">
+                    <div class="sectionTitleContainer flex align-items-center">
+                        <h2 class="sectionTitle">MediaGuard Settings</h2>
+                    </div>
+
+                    <div class="verticalSection">
+                        <p>MediaGuard detects corrupt or unplayable media files and automatically requests
+                           replacements from Sonarr (TV) and Radarr (Movies).</p>
+                    </div>
+
+                    <div class="verticalSection">
+                        <h3 class="sectionTitle">Sonarr (TV Shows)</h3>
+                        <div class="inputContainer">
+                            <label class="inputLabel" for="SonarrUrl">Sonarr URL</label>
+                            <input id="SonarrUrl" type="text" is="emby-input" />
+                            <div class="fieldDescription">Base URL for Sonarr (e.g. http://localhost:8989)</div>
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputLabel" for="SonarrApiKey">Sonarr API Key</label>
+                            <input id="SonarrApiKey" type="password" is="emby-input" />
+                            <div class="fieldDescription">Found in Sonarr under Settings &gt; General &gt; API Key</div>
+                        </div>
+                    </div>
+
+                    <div class="verticalSection">
+                        <h3 class="sectionTitle">Radarr (Movies)</h3>
+                        <div class="inputContainer">
+                            <label class="inputLabel" for="RadarrUrl">Radarr URL</label>
+                            <input id="RadarrUrl" type="text" is="emby-input" />
+                            <div class="fieldDescription">Base URL for Radarr (e.g. http://localhost:7878)</div>
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputLabel" for="RadarrApiKey">Radarr API Key</label>
+                            <input id="RadarrApiKey" type="password" is="emby-input" />
+                            <div class="fieldDescription">Found in Radarr under Settings &gt; General &gt; API Key</div>
+                        </div>
+                    </div>
+
+                    <div class="verticalSection">
+                        <h3 class="sectionTitle">Monitoring</h3>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="EnableReactiveMonitoring" type="checkbox" is="emby-checkbox" />
+                                <span>Enable Reactive Monitoring</span>
+                            </label>
+                            <div class="fieldDescription checkboxFieldDescription">
+                                Detect playback failures in real-time and trigger re-downloads.
+                            </div>
+                        </div>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="EnableProactiveScan" type="checkbox" is="emby-checkbox" />
+                                <span>Enable Proactive Scan</span>
+                            </label>
+                            <div class="fieldDescription checkboxFieldDescription">
+                                Periodically scan library files with ffprobe to detect corruption before playback.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="verticalSection">
+                        <h3 class="sectionTitle">Advanced</h3>
+                        <div class="inputContainer">
+                            <label class="inputLabel" for="FailureThresholdPercent">Failure Threshold (%)</label>
+                            <input id="FailureThresholdPercent" type="number" step="0.5" min="0" max="100" is="emby-input" />
+                            <div class="fieldDescription">
+                                If playback stops before this percentage, it's considered a potential failure. Default: 2%
+                            </div>
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputLabel" for="CooldownHours">Notification Cooldown (hours)</label>
+                            <input id="CooldownHours" type="number" min="1" max="168" is="emby-input" />
+                            <div class="fieldDescription">
+                                Suppress duplicate re-download requests for the same item within this window. Default: 24 hours
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <button is="emby-button" type="submit" class="raised button-submit block">
+                            <span>Save</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <script type="text/javascript">
+            var MediaGuardConfig = {
+                pluginUniqueId: 'a5d1e3b2-4f6c-8a9d-0e1f-2b3c4d5e6f7a'
+            };
+
+            document.querySelector('#MediaGuardConfigPage')
+                .addEventListener('pageshow', function () {
+                    Dashboard.showLoadingMsg();
+                    ApiClient.getPluginConfiguration(MediaGuardConfig.pluginUniqueId).then(function (config) {
+                        document.querySelector('#SonarrUrl').value = config.SonarrUrl || '';
+                        document.querySelector('#SonarrApiKey').value = config.SonarrApiKey || '';
+                        document.querySelector('#RadarrUrl').value = config.RadarrUrl || '';
+                        document.querySelector('#RadarrApiKey').value = config.RadarrApiKey || '';
+                        document.querySelector('#EnableReactiveMonitoring').checked = config.EnableReactiveMonitoring;
+                        document.querySelector('#EnableProactiveScan').checked = config.EnableProactiveScan;
+                        document.querySelector('#FailureThresholdPercent').value = config.FailureThresholdPercent;
+                        document.querySelector('#CooldownHours').value = config.CooldownHours;
+                        Dashboard.hideLoadingMsg();
+                    });
+                });
+
+            document.querySelector('#MediaGuardConfigForm')
+                .addEventListener('submit', function (e) {
+                    Dashboard.showLoadingMsg();
+                    ApiClient.getPluginConfiguration(MediaGuardConfig.pluginUniqueId).then(function (config) {
+                        config.SonarrUrl = document.querySelector('#SonarrUrl').value;
+                        config.SonarrApiKey = document.querySelector('#SonarrApiKey').value;
+                        config.RadarrUrl = document.querySelector('#RadarrUrl').value;
+                        config.RadarrApiKey = document.querySelector('#RadarrApiKey').value;
+                        config.EnableReactiveMonitoring = document.querySelector('#EnableReactiveMonitoring').checked;
+                        config.EnableProactiveScan = document.querySelector('#EnableProactiveScan').checked;
+                        config.FailureThresholdPercent = parseFloat(document.querySelector('#FailureThresholdPercent').value);
+                        config.CooldownHours = parseInt(document.querySelector('#CooldownHours').value);
+                        ApiClient.updatePluginConfiguration(MediaGuardConfig.pluginUniqueId, config).then(function () {
+                            Dashboard.processPluginConfigurationUpdateResult();
+                        });
+                    });
+                    e.preventDefault();
+                    return false;
+                });
+        </script>
+    </div>
+</body>
+</html>
