@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
-using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,6 +10,7 @@ using Jellyfin.Plugin.MediaGuard.Configuration;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.TV;
+using MediaBrowser.Controller.Library;
 using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.MediaGuard.Services;
@@ -22,47 +22,61 @@ public class ArrClient
 {
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<ArrClient> _logger;
+    private readonly ILibraryManager _libraryManager;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ArrClient"/> class.
     /// </summary>
-    public ArrClient(IHttpClientFactory httpClientFactory, ILogger<ArrClient> logger)
+    public ArrClient(IHttpClientFactory httpClientFactory, ILogger<ArrClient> logger, ILibraryManager libraryManager)
     {
         _httpClientFactory = httpClientFactory;
         _logger = logger;
+        _libraryManager = libraryManager;
     }
 
     /// <summary>
     /// Requests a re-download for the given library item via Sonarr or Radarr.
+    /// Returns true if a search was successfully triggered.
     /// </summary>
-    public async Task RequestRedownloadAsync(BaseItem item, CancellationToken cancellationToken = default)
+    public async Task<bool> RequestRedownloadAsync(BaseItem item, CancellationToken cancellationToken = default)
     {
         var config = Plugin.Instance?.Configuration;
         if (config is null)
         {
-            return;
+            return false;
         }
+
+        bool success;
 
         if (item is Episode episode)
         {
-            await HandleEpisodeAsync(episode, config, cancellationToken).ConfigureAwait(false);
+            success = await HandleEpisodeAsync(episode, config, cancellationToken).ConfigureAwait(false);
         }
         else if (item is Movie movie)
         {
-            await HandleMovieAsync(movie, config, cancellationToken).ConfigureAwait(false);
+            success = await HandleMovieAsync(movie, config, cancellationToken).ConfigureAwait(false);
         }
         else
         {
             _logger.LogDebug("MediaGuard: Item {Name} is not an Episode or Movie, skipping", item.Name);
+            return false;
         }
+
+        // Trigger a Jellyfin library scan so replaced files are picked up
+        if (success)
+        {
+            ScheduleLibraryScan(item);
+        }
+
+        return success;
     }
 
-    private async Task HandleEpisodeAsync(Episode episode, PluginConfiguration config, CancellationToken ct)
+    private async Task<bool> HandleEpisodeAsync(Episode episode, PluginConfiguration config, CancellationToken ct)
     {
         if (string.IsNullOrEmpty(config.SonarrApiKey) || string.IsNullOrEmpty(config.SonarrUrl))
         {
             _logger.LogWarning("MediaGuard: Sonarr not configured, cannot request re-download for {Name}", episode.Name);
-            return;
+            return false;
         }
 
         var seriesName = episode.SeriesName;
@@ -86,7 +100,6 @@ public class ArrClient
 
             if (series is null)
             {
-                // Try partial match
                 series = seriesResponse?.FirstOrDefault(s =>
                     s.Title != null && s.Title.Contains(seriesName ?? string.Empty, StringComparison.OrdinalIgnoreCase));
             }
@@ -94,7 +107,7 @@ public class ArrClient
             if (series is null)
             {
                 _logger.LogWarning("MediaGuard: Series '{Series}' not found in Sonarr. Add it to Sonarr first.", seriesName);
-                return;
+                return false;
             }
 
             // Find the episode in Sonarr
@@ -109,7 +122,7 @@ public class ArrClient
                 _logger.LogWarning(
                     "MediaGuard: Episode S{Season:D2}E{Episode:D2} not found in Sonarr for series '{Series}'",
                     seasonNumber, episodeNumber, seriesName);
-                return;
+                return false;
             }
 
             // Delete the corrupt file from disk so Sonarr sees it as missing
@@ -133,19 +146,22 @@ public class ArrClient
             _logger.LogInformation(
                 "MediaGuard: Triggered Sonarr search for {Series} S{Season:D2}E{Episode:D2}",
                 seriesName, seasonNumber, episodeNumber);
+
+            return true;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "MediaGuard: Failed to communicate with Sonarr for {Name}", episode.Name);
+            return false;
         }
     }
 
-    private async Task HandleMovieAsync(Movie movie, PluginConfiguration config, CancellationToken ct)
+    private async Task<bool> HandleMovieAsync(Movie movie, PluginConfiguration config, CancellationToken ct)
     {
         if (string.IsNullOrEmpty(config.RadarrApiKey) || string.IsNullOrEmpty(config.RadarrUrl))
         {
             _logger.LogWarning("MediaGuard: Radarr not configured, cannot request re-download for {Name}", movie.Name);
-            return;
+            return false;
         }
 
         _logger.LogInformation("MediaGuard: Detected corrupt movie - {Name}. Searching Radarr...", movie.Name);
@@ -154,7 +170,6 @@ public class ArrClient
         {
             var client = CreateClient(config.RadarrUrl, config.RadarrApiKey);
 
-            // Find the movie in Radarr
             var moviesResponse = await client.GetFromJsonAsync<List<ArrMovie>>(
                 "api/v3/movie", ct).ConfigureAwait(false);
 
@@ -163,7 +178,6 @@ public class ArrClient
 
             if (radarrMovie is null)
             {
-                // Try matching by year too
                 radarrMovie = moviesResponse?.FirstOrDefault(m =>
                     m.Title != null
                     && m.Title.Contains(movie.Name ?? string.Empty, StringComparison.OrdinalIgnoreCase)
@@ -173,7 +187,7 @@ public class ArrClient
             if (radarrMovie is null)
             {
                 _logger.LogWarning("MediaGuard: Movie '{Name}' not found in Radarr. Add it to Radarr first.", movie.Name);
-                return;
+                return false;
             }
 
             // Delete the corrupt file from disk so Radarr sees it as missing
@@ -183,7 +197,6 @@ public class ArrClient
                 System.IO.File.Delete(movie.Path);
             }
 
-            // Tell Radarr to refresh and search
             await client.PostAsJsonAsync(
                 "api/v3/command",
                 new { name = "RefreshMovie", movieIds = new[] { radarrMovie.Id } },
@@ -195,11 +208,34 @@ public class ArrClient
                 ct).ConfigureAwait(false);
 
             _logger.LogInformation("MediaGuard: Triggered Radarr search for {Name}", movie.Name);
+            return true;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "MediaGuard: Failed to communicate with Radarr for {Name}", movie.Name);
+            return false;
         }
+    }
+
+    private void ScheduleLibraryScan(BaseItem item)
+    {
+        // Queue a library scan for the parent folder so Jellyfin picks up the replacement
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                // Wait for the download to have a chance to complete
+                await Task.Delay(TimeSpan.FromMinutes(5)).ConfigureAwait(false);
+
+                _logger.LogInformation("MediaGuard: Triggering Jellyfin library scan for replaced media");
+                await _libraryManager.ValidateMediaLibrary(new Progress<double>(), CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "MediaGuard: Library scan failed (non-critical)");
+            }
+        });
     }
 
     private HttpClient CreateClient(string baseUrl, string apiKey)

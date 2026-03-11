@@ -1,7 +1,13 @@
+using System;
+using System.Linq;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.MediaGuard.Services;
+using MediaBrowser.Controller.Entities.Movies;
+using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Events;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.Session;
+using MediaBrowser.Model.Session;
 using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.MediaGuard.Notifiers;
@@ -14,6 +20,7 @@ public class PlaybackFailureNotifier : IEventConsumer<PlaybackStopEventArgs>
     private readonly ILogger<PlaybackFailureNotifier> _logger;
     private readonly ArrClient _arrClient;
     private readonly CooldownTracker _cooldownTracker;
+    private readonly ISessionManager _sessionManager;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="PlaybackFailureNotifier"/> class.
@@ -21,11 +28,13 @@ public class PlaybackFailureNotifier : IEventConsumer<PlaybackStopEventArgs>
     public PlaybackFailureNotifier(
         ILogger<PlaybackFailureNotifier> logger,
         ArrClient arrClient,
-        CooldownTracker cooldownTracker)
+        CooldownTracker cooldownTracker,
+        ISessionManager sessionManager)
     {
         _logger = logger;
         _arrClient = arrClient;
         _cooldownTracker = cooldownTracker;
+        _sessionManager = sessionManager;
     }
 
     /// <inheritdoc />
@@ -39,6 +48,12 @@ public class PlaybackFailureNotifier : IEventConsumer<PlaybackStopEventArgs>
 
         var item = eventArgs.Item;
         if (item is null || item.IsThemeMedia)
+        {
+            return;
+        }
+
+        // Only handle Episodes and Movies
+        if (item is not Episode and not Movie)
         {
             return;
         }
@@ -74,6 +89,77 @@ public class PlaybackFailureNotifier : IEventConsumer<PlaybackStopEventArgs>
             return;
         }
 
-        await _arrClient.RequestRedownloadAsync(item).ConfigureAwait(false);
+        // Build a friendly display name
+        var displayName = item is Episode ep
+            ? $"{ep.SeriesName} S{ep.ParentIndexNumber:D2}E{ep.IndexNumber:D2} - {ep.Name}"
+            : item.Name;
+
+        // Notify the user that the file is corrupt and a replacement is being sourced
+        await NotifyUserAsync(eventArgs, displayName).ConfigureAwait(false);
+
+        // Request re-download from Sonarr/Radarr
+        var success = await _arrClient.RequestRedownloadAsync(item).ConfigureAwait(false);
+
+        if (success)
+        {
+            // Send follow-up confirmation
+            await NotifyUserAsync(
+                eventArgs,
+                displayName,
+                "A replacement has been found and is downloading. This item will be available again shortly.").ConfigureAwait(false);
+        }
+    }
+
+    private async Task NotifyUserAsync(PlaybackStopEventArgs eventArgs, string displayName, string? followUpMessage = null)
+    {
+        try
+        {
+            // Find the session that was playing this item
+            var sessions = _sessionManager.Sessions
+                .Where(s => s.UserId != Guid.Empty)
+                .ToList();
+
+            // Try to find the specific session by matching the user/device
+            var targetSession = sessions.FirstOrDefault(s =>
+                s.LastPlaybackCheckIn >= DateTime.UtcNow.AddMinutes(-2));
+
+            if (targetSession is null && sessions.Count > 0)
+            {
+                targetSession = sessions.First();
+            }
+
+            if (targetSession is null)
+            {
+                _logger.LogDebug("MediaGuard: No active session found to send notification");
+                return;
+            }
+
+            var header = followUpMessage is null
+                ? "Corrupt File Detected"
+                : "MediaGuard Update";
+
+            var text = followUpMessage
+                ?? $"\"{displayName}\" is corrupt and cannot be played. MediaGuard is automatically sourcing a replacement — check back shortly.";
+
+            var messageCommand = new MessageCommand
+            {
+                Header = header,
+                Text = text,
+                TimeoutMs = followUpMessage is null ? 15000L : 10000L
+            };
+
+            await _sessionManager.SendMessageCommand(
+                targetSession.Id,
+                targetSession.Id,
+                messageCommand,
+                default).ConfigureAwait(false);
+
+            _logger.LogInformation("MediaGuard: Sent notification to session {Session}: {Message}",
+                targetSession.DeviceName, text);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "MediaGuard: Failed to send user notification (non-critical)");
+        }
     }
 }
