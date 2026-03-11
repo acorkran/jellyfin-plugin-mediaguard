@@ -1,15 +1,15 @@
-# MediaGuard - Jellyfin Plugin
+# MediarrGuard - Jellyfin Plugin
 
 Automatically detects corrupt or unplayable media files in your Jellyfin library and requests replacements from **Sonarr** (TV) and **Radarr** (Movies).
 
 ## The Problem
 
-You sit down to watch something, hit play, and get an error because the file is corrupt. You have to manually figure out what's wrong, delete the file, go to Sonarr/Radarr, find the episode/movie, and trigger a search. MediaGuard does all of this automatically.
+You sit down to watch something, hit play, and get an error because the file is corrupt. You have to manually figure out what's wrong, delete the file, go to Sonarr/Radarr, find the episode/movie, and trigger a search. MediarrGuard does all of this automatically.
 
 ## How It Works
 
 ### Reactive Monitoring
-When playback fails (stops at 0% or below a configurable threshold), MediaGuard:
+When playback fails (stops at 0% or below a configurable threshold), MediarrGuard:
 1. Detects the failure via Jellyfin's playback events
 2. Identifies the item as an Episode or Movie
 3. Looks it up in Sonarr/Radarr
@@ -23,7 +23,7 @@ A scheduled task (default: weekly on Sunday at 3 AM) runs `ffprobe` against ever
 
 ### Manual
 1. Download the latest release ZIP
-2. Extract to `{Jellyfin Data}/plugins/MediaGuard/`
+2. Extract to `{Jellyfin Data}/plugins/MediarrGuard/`
 3. Restart Jellyfin
 
 ### From Repository
@@ -34,7 +34,7 @@ https://raw.githubusercontent.com/corkie/jellyfin-plugin-mediaguard/main/manifes
 
 ## Configuration
 
-After installation, go to **Dashboard > Plugins > MediaGuard** and configure:
+After installation, go to **Dashboard > Plugins > MediarrGuard** and configure:
 
 - **Sonarr URL** and **API Key** - for TV show re-downloads
 - **Radarr URL** and **API Key** - for movie re-downloads

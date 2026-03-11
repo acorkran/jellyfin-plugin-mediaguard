@@ -65,7 +65,7 @@ public class PlaybackFailureNotifier : IEventConsumer<PlaybackStopEventArgs>
         if (runtimeTicks <= 0)
         {
             // No runtime info means the file couldn't even be probed - definitely corrupt
-            _logger.LogWarning("MediaGuard: {Name} has no runtime info (probe failed), flagging as corrupt", item.Name);
+            _logger.LogWarning("MediarrGuard: {Name} has no runtime info (probe failed), flagging as corrupt", item.Name);
         }
         else
         {
@@ -78,14 +78,14 @@ public class PlaybackFailureNotifier : IEventConsumer<PlaybackStopEventArgs>
             }
 
             _logger.LogWarning(
-                "MediaGuard: {Name} playback stopped at {Percent:F1}% (below {Threshold}% threshold), flagging as potentially corrupt",
+                "MediarrGuard: {Name} playback stopped at {Percent:F1}% (below {Threshold}% threshold), flagging as potentially corrupt",
                 item.Name, percentPlayed, config.FailureThresholdPercent);
         }
 
         // Check cooldown
         if (!_cooldownTracker.TryFlag(item.Id, config.CooldownHours))
         {
-            _logger.LogDebug("MediaGuard: {Name} is on cooldown, skipping", item.Name);
+            _logger.LogDebug("MediarrGuard: {Name} is on cooldown, skipping", item.Name);
             return;
         }
 
@@ -130,16 +130,16 @@ public class PlaybackFailureNotifier : IEventConsumer<PlaybackStopEventArgs>
 
             if (targetSession is null)
             {
-                _logger.LogDebug("MediaGuard: No active session found to send notification");
+                _logger.LogDebug("MediarrGuard: No active session found to send notification");
                 return;
             }
 
             var header = followUpMessage is null
                 ? "Corrupt File Detected"
-                : "MediaGuard Update";
+                : "MediarrGuard Update";
 
             var text = followUpMessage
-                ?? $"\"{displayName}\" is corrupt and cannot be played. MediaGuard is automatically sourcing a replacement — check back shortly.";
+                ?? $"\"{displayName}\" is corrupt and cannot be played. MediarrGuard is automatically sourcing a replacement — check back shortly.";
 
             var messageCommand = new MessageCommand
             {
@@ -154,12 +154,12 @@ public class PlaybackFailureNotifier : IEventConsumer<PlaybackStopEventArgs>
                 messageCommand,
                 default).ConfigureAwait(false);
 
-            _logger.LogInformation("MediaGuard: Sent notification to session {Session}: {Message}",
+            _logger.LogInformation("MediarrGuard: Sent notification to session {Session}: {Message}",
                 targetSession.DeviceName, text);
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "MediaGuard: Failed to send user notification (non-critical)");
+            _logger.LogDebug(ex, "MediarrGuard: Failed to send user notification (non-critical)");
         }
     }
 }

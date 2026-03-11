@@ -9,7 +9,7 @@ using MediaBrowser.Model.Serialization;
 namespace Jellyfin.Plugin.MediaGuard;
 
 /// <summary>
-/// MediaGuard plugin - detects corrupt media and triggers re-downloads via Sonarr/Radarr.
+/// MediarrGuard plugin - detects corrupt media and triggers re-downloads via Sonarr/Radarr.
 /// </summary>
 public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
 {
@@ -28,7 +28,7 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     public static Plugin? Instance { get; private set; }
 
     /// <inheritdoc />
-    public override string Name => "MediaGuard";
+    public override string Name => "MediarrGuard";
 
     /// <inheritdoc />
     public override Guid Id => Guid.Parse("a5d1e3b2-4f6c-8a9d-0e1f-2b3c4d5e6f7a");

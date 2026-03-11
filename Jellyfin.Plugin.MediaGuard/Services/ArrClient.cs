@@ -58,7 +58,7 @@ public class ArrClient
         }
         else
         {
-            _logger.LogDebug("MediaGuard: Item {Name} is not an Episode or Movie, skipping", item.Name);
+            _logger.LogDebug("MediarrGuard: Item {Name} is not an Episode or Movie, skipping", item.Name);
             return false;
         }
 
@@ -75,7 +75,7 @@ public class ArrClient
     {
         if (string.IsNullOrEmpty(config.SonarrApiKey) || string.IsNullOrEmpty(config.SonarrUrl))
         {
-            _logger.LogWarning("MediaGuard: Sonarr not configured, cannot request re-download for {Name}", episode.Name);
+            _logger.LogWarning("MediarrGuard: Sonarr not configured, cannot request re-download for {Name}", episode.Name);
             return false;
         }
 
@@ -84,7 +84,7 @@ public class ArrClient
         var episodeNumber = episode.IndexNumber;
 
         _logger.LogInformation(
-            "MediaGuard: Detected corrupt episode - {Series} S{Season:D2}E{Episode:D2} ({Name}). Searching Sonarr...",
+            "MediarrGuard: Detected corrupt episode - {Series} S{Season:D2}E{Episode:D2} ({Name}). Searching Sonarr...",
             seriesName, seasonNumber, episodeNumber, episode.Name);
 
         try
@@ -106,7 +106,7 @@ public class ArrClient
 
             if (series is null)
             {
-                _logger.LogWarning("MediaGuard: Series '{Series}' not found in Sonarr. Add it to Sonarr first.", seriesName);
+                _logger.LogWarning("MediarrGuard: Series '{Series}' not found in Sonarr. Add it to Sonarr first.", seriesName);
                 return false;
             }
 
@@ -120,7 +120,7 @@ public class ArrClient
             if (sonarrEpisode is null)
             {
                 _logger.LogWarning(
-                    "MediaGuard: Episode S{Season:D2}E{Episode:D2} not found in Sonarr for series '{Series}'",
+                    "MediarrGuard: Episode S{Season:D2}E{Episode:D2} not found in Sonarr for series '{Series}'",
                     seasonNumber, episodeNumber, seriesName);
                 return false;
             }
@@ -128,7 +128,7 @@ public class ArrClient
             // Delete the corrupt file from disk so Sonarr sees it as missing
             if (!string.IsNullOrEmpty(episode.Path) && System.IO.File.Exists(episode.Path))
             {
-                _logger.LogInformation("MediaGuard: Deleting corrupt file: {Path}", episode.Path);
+                _logger.LogInformation("MediarrGuard: Deleting corrupt file: {Path}", episode.Path);
                 System.IO.File.Delete(episode.Path);
             }
 
@@ -144,14 +144,14 @@ public class ArrClient
                 ct).ConfigureAwait(false);
 
             _logger.LogInformation(
-                "MediaGuard: Triggered Sonarr search for {Series} S{Season:D2}E{Episode:D2}",
+                "MediarrGuard: Triggered Sonarr search for {Series} S{Season:D2}E{Episode:D2}",
                 seriesName, seasonNumber, episodeNumber);
 
             return true;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "MediaGuard: Failed to communicate with Sonarr for {Name}", episode.Name);
+            _logger.LogError(ex, "MediarrGuard: Failed to communicate with Sonarr for {Name}", episode.Name);
             return false;
         }
     }
@@ -160,11 +160,11 @@ public class ArrClient
     {
         if (string.IsNullOrEmpty(config.RadarrApiKey) || string.IsNullOrEmpty(config.RadarrUrl))
         {
-            _logger.LogWarning("MediaGuard: Radarr not configured, cannot request re-download for {Name}", movie.Name);
+            _logger.LogWarning("MediarrGuard: Radarr not configured, cannot request re-download for {Name}", movie.Name);
             return false;
         }
 
-        _logger.LogInformation("MediaGuard: Detected corrupt movie - {Name}. Searching Radarr...", movie.Name);
+        _logger.LogInformation("MediarrGuard: Detected corrupt movie - {Name}. Searching Radarr...", movie.Name);
 
         try
         {
@@ -186,14 +186,14 @@ public class ArrClient
 
             if (radarrMovie is null)
             {
-                _logger.LogWarning("MediaGuard: Movie '{Name}' not found in Radarr. Add it to Radarr first.", movie.Name);
+                _logger.LogWarning("MediarrGuard: Movie '{Name}' not found in Radarr. Add it to Radarr first.", movie.Name);
                 return false;
             }
 
             // Delete the corrupt file from disk so Radarr sees it as missing
             if (!string.IsNullOrEmpty(movie.Path) && System.IO.File.Exists(movie.Path))
             {
-                _logger.LogInformation("MediaGuard: Deleting corrupt file: {Path}", movie.Path);
+                _logger.LogInformation("MediarrGuard: Deleting corrupt file: {Path}", movie.Path);
                 System.IO.File.Delete(movie.Path);
             }
 
@@ -207,12 +207,12 @@ public class ArrClient
                 new { name = "MoviesSearch", movieIds = new[] { radarrMovie.Id } },
                 ct).ConfigureAwait(false);
 
-            _logger.LogInformation("MediaGuard: Triggered Radarr search for {Name}", movie.Name);
+            _logger.LogInformation("MediarrGuard: Triggered Radarr search for {Name}", movie.Name);
             return true;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "MediaGuard: Failed to communicate with Radarr for {Name}", movie.Name);
+            _logger.LogError(ex, "MediarrGuard: Failed to communicate with Radarr for {Name}", movie.Name);
             return false;
         }
     }
@@ -227,20 +227,20 @@ public class ArrClient
                 // Wait for the download to have a chance to complete
                 await Task.Delay(TimeSpan.FromMinutes(5)).ConfigureAwait(false);
 
-                _logger.LogInformation("MediaGuard: Triggering Jellyfin library scan for replaced media");
+                _logger.LogInformation("MediarrGuard: Triggering Jellyfin library scan for replaced media");
                 await _libraryManager.ValidateMediaLibrary(new Progress<double>(), CancellationToken.None)
                     .ConfigureAwait(false);
             }
             catch (Exception ex)
             {
-                _logger.LogDebug(ex, "MediaGuard: Library scan failed (non-critical)");
+                _logger.LogDebug(ex, "MediarrGuard: Library scan failed (non-critical)");
             }
         });
     }
 
     private HttpClient CreateClient(string baseUrl, string apiKey)
     {
-        var client = _httpClientFactory.CreateClient("MediaGuard");
+        var client = _httpClientFactory.CreateClient("MediarrGuard");
         client.BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/");
         client.DefaultRequestHeaders.Add("X-Api-Key", apiKey);
         return client;

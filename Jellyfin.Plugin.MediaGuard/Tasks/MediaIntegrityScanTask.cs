@@ -41,16 +41,16 @@ public class MediaIntegrityScanTask : IScheduledTask
     }
 
     /// <inheritdoc />
-    public string Name => "MediaGuard Integrity Scan";
+    public string Name => "MediarrGuard Integrity Scan";
 
     /// <inheritdoc />
-    public string Key => "MediaGuardIntegrityScan";
+    public string Key => "MediarrGuardIntegrityScan";
 
     /// <inheritdoc />
     public string Description => "Scans all media files with ffprobe to detect corruption and triggers re-downloads for corrupt files.";
 
     /// <inheritdoc />
-    public string Category => "MediaGuard";
+    public string Category => "MediarrGuard";
 
     /// <inheritdoc />
     public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
@@ -72,11 +72,11 @@ public class MediaIntegrityScanTask : IScheduledTask
         var config = Plugin.Instance?.Configuration;
         if (config is null || !config.EnableProactiveScan)
         {
-            _logger.LogInformation("MediaGuard: Proactive scan is disabled, skipping");
+            _logger.LogInformation("MediarrGuard: Proactive scan is disabled, skipping");
             return;
         }
 
-        _logger.LogInformation("MediaGuard: Starting media integrity scan...");
+        _logger.LogInformation("MediarrGuard: Starting media integrity scan...");
 
         var query = new InternalItemsQuery
         {
@@ -90,7 +90,7 @@ public class MediaIntegrityScanTask : IScheduledTask
             .Where(i => !string.IsNullOrEmpty(i.Path))
             .ToList();
 
-        _logger.LogInformation("MediaGuard: Found {Count} media files to scan", items.Count);
+        _logger.LogInformation("MediarrGuard: Found {Count} media files to scan", items.Count);
 
         var corruptCount = 0;
 
@@ -103,7 +103,7 @@ public class MediaIntegrityScanTask : IScheduledTask
 
             if (!System.IO.File.Exists(item.Path))
             {
-                _logger.LogWarning("MediaGuard: File missing: {Path}", item.Path);
+                _logger.LogWarning("MediarrGuard: File missing: {Path}", item.Path);
                 continue;
             }
 
@@ -112,7 +112,7 @@ public class MediaIntegrityScanTask : IScheduledTask
             if (isCorrupt)
             {
                 corruptCount++;
-                _logger.LogWarning("MediaGuard: CORRUPT file detected: {Path}", item.Path);
+                _logger.LogWarning("MediarrGuard: CORRUPT file detected: {Path}", item.Path);
 
                 if (_cooldownTracker.TryFlag(item.Id, config.CooldownHours))
                 {
@@ -123,7 +123,7 @@ public class MediaIntegrityScanTask : IScheduledTask
 
         progress.Report(100);
         _logger.LogInformation(
-            "MediaGuard: Integrity scan complete. Scanned {Total} files, found {Corrupt} corrupt.",
+            "MediarrGuard: Integrity scan complete. Scanned {Total} files, found {Corrupt} corrupt.",
             items.Count, corruptCount);
     }
 
@@ -155,7 +155,7 @@ public class MediaIntegrityScanTask : IScheduledTask
             // ffprobe returns non-zero for corrupt files
             if (process.ExitCode != 0)
             {
-                _logger.LogDebug("MediaGuard: ffprobe failed for {Path}: {Error}", filePath, errorOutput.Trim());
+                _logger.LogDebug("MediarrGuard: ffprobe failed for {Path}: {Error}", filePath, errorOutput.Trim());
                 return true;
             }
 
@@ -164,7 +164,7 @@ public class MediaIntegrityScanTask : IScheduledTask
             // If ffprobe returns nothing for a video file, it's corrupt
             if (string.IsNullOrWhiteSpace(output))
             {
-                _logger.LogDebug("MediaGuard: ffprobe returned no video stream info for {Path}", filePath);
+                _logger.LogDebug("MediarrGuard: ffprobe returned no video stream info for {Path}", filePath);
                 return true;
             }
 
@@ -172,7 +172,7 @@ public class MediaIntegrityScanTask : IScheduledTask
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "MediaGuard: Error probing file {Path}", filePath);
+            _logger.LogError(ex, "MediarrGuard: Error probing file {Path}", filePath);
             return false; // Don't flag as corrupt if we can't even run ffprobe
         }
     }
