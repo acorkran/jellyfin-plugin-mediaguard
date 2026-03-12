@@ -29,7 +29,7 @@ A scheduled task (default: weekly on Sunday at 3 AM) runs `ffprobe` against ever
 ### From Repository
 Add this repository URL in Jellyfin Dashboard > Plugins > Repositories:
 ```
-https://raw.githubusercontent.com/corkie/jellyfin-plugin-mediaguard/main/manifest.json
+https://raw.githubusercontent.com/acorkran/jellyfin-plugin-mediarrguard/main/manifest.json
 ```
 
 ## Configuration
