@@ -149,8 +149,15 @@ public class MediaIntegrityScanTask : IScheduledTask
 
             process.Start();
 
-            var errorOutput = await process.StandardError.ReadToEndAsync(ct).ConfigureAwait(false);
+            // Read both streams concurrently before WaitForExit to avoid deadlocks
+            var outputTask = process.StandardOutput.ReadToEndAsync(ct);
+            var errorTask = process.StandardError.ReadToEndAsync(ct);
+
+            await Task.WhenAll(outputTask, errorTask).ConfigureAwait(false);
             await process.WaitForExitAsync(ct).ConfigureAwait(false);
+
+            var output = outputTask.Result;
+            var errorOutput = errorTask.Result;
 
             // ffprobe returns non-zero for corrupt files
             if (process.ExitCode != 0)
@@ -158,8 +165,6 @@ public class MediaIntegrityScanTask : IScheduledTask
                 _logger.LogDebug("MediarrGuard: ffprobe failed for {Path}: {Error}", filePath, errorOutput.Trim());
                 return true;
             }
-
-            var output = await process.StandardOutput.ReadToEndAsync(ct).ConfigureAwait(false);
 
             // If ffprobe returns nothing for a video file, it's corrupt
             if (string.IsNullOrWhiteSpace(output))

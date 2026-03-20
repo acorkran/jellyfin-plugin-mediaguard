@@ -84,6 +84,20 @@
                                 Suppress duplicate re-download requests for the same item within this window. Default: 24 hours
                             </div>
                         </div>
+                        <div class="inputContainer">
+                            <label class="inputLabel" for="MinPlaybackDurationSeconds">Minimum Playback Duration (seconds)</label>
+                            <input id="MinPlaybackDurationSeconds" type="number" min="1" max="120" is="emby-input" />
+                            <div class="fieldDescription">
+                                Playback sessions shorter than this are treated as user skips and ignored. Default: 10 seconds
+                            </div>
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputLabel" for="ConsecutiveFailuresRequired">Consecutive Failures Required</label>
+                            <input id="ConsecutiveFailuresRequired" type="number" min="1" max="10" is="emby-input" />
+                            <div class="fieldDescription">
+                                Number of consecutive low-progress stops required before flagging as corrupt. Default: 3
+                            </div>
+                        </div>
                     </div>
 
                     <div>
@@ -112,6 +126,8 @@
                         document.querySelector('#EnableProactiveScan').checked = config.EnableProactiveScan;
                         document.querySelector('#FailureThresholdPercent').value = config.FailureThresholdPercent;
                         document.querySelector('#CooldownHours').value = config.CooldownHours;
+                        document.querySelector('#MinPlaybackDurationSeconds').value = config.MinPlaybackDurationSeconds;
+                        document.querySelector('#ConsecutiveFailuresRequired').value = config.ConsecutiveFailuresRequired;
                         Dashboard.hideLoadingMsg();
                     });
                 });
@@ -128,6 +144,8 @@
                         config.EnableProactiveScan = document.querySelector('#EnableProactiveScan').checked;
                         config.FailureThresholdPercent = parseFloat(document.querySelector('#FailureThresholdPercent').value);
                         config.CooldownHours = parseInt(document.querySelector('#CooldownHours').value);
+                        config.MinPlaybackDurationSeconds = parseInt(document.querySelector('#MinPlaybackDurationSeconds').value);
+                        config.ConsecutiveFailuresRequired = parseInt(document.querySelector('#ConsecutiveFailuresRequired').value);
                         ApiClient.updatePluginConfiguration(MediaGuardConfig.pluginUniqueId, config).then(function () {
                             Dashboard.processPluginConfigurationUpdateResult();
                         });

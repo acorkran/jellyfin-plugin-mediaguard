@@ -20,6 +20,7 @@ public class PlaybackFailureNotifier : IEventConsumer<PlaybackStopEventArgs>
     private readonly ILogger<PlaybackFailureNotifier> _logger;
     private readonly ArrClient _arrClient;
     private readonly CooldownTracker _cooldownTracker;
+    private readonly FailureCounter _failureCounter;
     private readonly ISessionManager _sessionManager;
 
     /// <summary>
@@ -29,11 +30,13 @@ public class PlaybackFailureNotifier : IEventConsumer<PlaybackStopEventArgs>
         ILogger<PlaybackFailureNotifier> logger,
         ArrClient arrClient,
         CooldownTracker cooldownTracker,
+        FailureCounter failureCounter,
         ISessionManager sessionManager)
     {
         _logger = logger;
         _arrClient = arrClient;
         _cooldownTracker = cooldownTracker;
+        _failureCounter = failureCounter;
         _sessionManager = sessionManager;
     }
 
@@ -77,17 +80,46 @@ public class PlaybackFailureNotifier : IEventConsumer<PlaybackStopEventArgs>
                 return;
             }
 
+            // Check minimum playback duration to filter out quick skips.
+            // If the user played for less than the configured minimum, this is
+            // almost certainly a user-initiated skip, not a corruption failure.
+            var playbackDurationSeconds = (double)(positionTicks ?? 0) / TimeSpan.TicksPerSecond;
+            if (playbackDurationSeconds < config.MinPlaybackDurationSeconds)
+            {
+                _logger.LogDebug(
+                    "MediarrGuard: {Name} playback lasted {Duration:F1}s (below {Min}s minimum), treating as user skip — ignoring",
+                    item.Name, playbackDurationSeconds, config.MinPlaybackDurationSeconds);
+                return;
+            }
+
             _logger.LogWarning(
-                "MediarrGuard: {Name} playback stopped at {Percent:F1}% (below {Threshold}% threshold), flagging as potentially corrupt",
+                "MediarrGuard: {Name} playback stopped at {Percent:F1}% (below {Threshold}% threshold), recording failure",
                 item.Name, percentPlayed, config.FailureThresholdPercent);
         }
 
-        // Check cooldown
+        // Track consecutive failures — only act once the threshold is reached
+        var failureCount = _failureCounter.RecordFailure(item.Id);
+        if (failureCount < config.ConsecutiveFailuresRequired)
+        {
+            _logger.LogInformation(
+                "MediarrGuard: {Name} failure {Count}/{Required} — not flagging yet",
+                item.Name, failureCount, config.ConsecutiveFailuresRequired);
+            return;
+        }
+
+        // Check cooldown (only reached after consecutive failure threshold is met)
         if (!_cooldownTracker.TryFlag(item.Id, config.CooldownHours))
         {
             _logger.LogDebug("MediarrGuard: {Name} is on cooldown, skipping", item.Name);
             return;
         }
+
+        _logger.LogWarning(
+            "MediarrGuard: {Name} has failed {Count} consecutive times — flagging as corrupt",
+            item.Name, failureCount);
+
+        // Reset counter now that we're acting on it
+        _failureCounter.Reset(item.Id);
 
         // Build a friendly display name
         var displayName = item is Episode ep

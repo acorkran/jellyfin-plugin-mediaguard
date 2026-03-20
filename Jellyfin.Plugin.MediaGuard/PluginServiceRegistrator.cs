@@ -17,6 +17,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
     public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
     {
         serviceCollection.AddSingleton<CooldownTracker>();
+        serviceCollection.AddSingleton<FailureCounter>();
         serviceCollection.AddSingleton<ArrClient>();
         serviceCollection.AddScoped<IEventConsumer<PlaybackStopEventArgs>, PlaybackFailureNotifier>();
     }

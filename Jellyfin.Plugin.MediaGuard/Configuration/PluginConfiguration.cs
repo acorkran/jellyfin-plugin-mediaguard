@@ -43,10 +43,24 @@ public class PluginConfiguration : BasePluginConfiguration
     /// Gets or sets the maximum playback percentage to consider a failure.
     /// If playback stops before this percentage, it may indicate corruption.
     /// </summary>
-    public double FailureThresholdPercent { get; set; } = 2.0;
+    public double FailureThresholdPercent { get; set; } = 3.0;
 
     /// <summary>
     /// Gets or sets the number of hours to suppress duplicate notifications for the same item.
     /// </summary>
     public int CooldownHours { get; set; } = 24;
+
+    /// <summary>
+    /// Gets or sets the minimum number of seconds a playback session must last
+    /// before a low-progress stop is considered a potential corruption.
+    /// Stops shorter than this are treated as user skips and ignored.
+    /// </summary>
+    public int MinPlaybackDurationSeconds { get; set; } = 10;
+
+    /// <summary>
+    /// Gets or sets the number of consecutive low-progress stops required
+    /// before flagging an item as corrupt. A single skip won't trigger action;
+    /// the item must fail repeatedly to be considered genuinely corrupt.
+    /// </summary>
+    public int ConsecutiveFailuresRequired { get; set; } = 3;
 }

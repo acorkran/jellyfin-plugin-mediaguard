@@ -125,19 +125,21 @@ public class ArrClient
                 return false;
             }
 
-            // Delete the corrupt file from disk so Sonarr sees it as missing
-            if (!string.IsNullOrEmpty(episode.Path) && System.IO.File.Exists(episode.Path))
+            // Delete the corrupt episode file via Sonarr's API so only this file is affected
+            // (avoids RescanSeries which re-evaluates the entire series against the quality profile)
+            var episodeFileDeleted = await DeleteSonarrEpisodeFileAsync(client, sonarrEpisode.Id, episode.Path, ct).ConfigureAwait(false);
+
+            if (!episodeFileDeleted)
             {
-                _logger.LogInformation("MediarrGuard: Deleting corrupt file: {Path}", episode.Path);
-                System.IO.File.Delete(episode.Path);
+                // Fallback: delete from disk manually if the API route failed
+                if (!string.IsNullOrEmpty(episode.Path) && System.IO.File.Exists(episode.Path))
+                {
+                    _logger.LogInformation("MediarrGuard: Fallback - deleting corrupt file from disk: {Path}", episode.Path);
+                    System.IO.File.Delete(episode.Path);
+                }
             }
 
-            // Tell Sonarr to refresh and search
-            await client.PostAsJsonAsync(
-                "api/v3/command",
-                new { name = "RescanSeries", seriesId = series.Id },
-                ct).ConfigureAwait(false);
-
+            // Search for just this episode - no RescanSeries needed
             await client.PostAsJsonAsync(
                 "api/v3/command",
                 new { name = "EpisodeSearch", episodeIds = new[] { sonarrEpisode.Id } },
@@ -190,17 +192,17 @@ public class ArrClient
                 return false;
             }
 
-            // Delete the corrupt file from disk so Radarr sees it as missing
-            if (!string.IsNullOrEmpty(movie.Path) && System.IO.File.Exists(movie.Path))
-            {
-                _logger.LogInformation("MediarrGuard: Deleting corrupt file: {Path}", movie.Path);
-                System.IO.File.Delete(movie.Path);
-            }
+            // Delete the corrupt movie file via Radarr's API (targeted, no full library re-evaluation)
+            var movieFileDeleted = await DeleteRadarrMovieFileAsync(client, radarrMovie.Id, movie.Path, ct).ConfigureAwait(false);
 
-            await client.PostAsJsonAsync(
-                "api/v3/command",
-                new { name = "RefreshMovie", movieIds = new[] { radarrMovie.Id } },
-                ct).ConfigureAwait(false);
+            if (!movieFileDeleted)
+            {
+                if (!string.IsNullOrEmpty(movie.Path) && System.IO.File.Exists(movie.Path))
+                {
+                    _logger.LogInformation("MediarrGuard: Fallback - deleting corrupt file from disk: {Path}", movie.Path);
+                    System.IO.File.Delete(movie.Path);
+                }
+            }
 
             await client.PostAsJsonAsync(
                 "api/v3/command",
@@ -217,23 +219,103 @@ public class ArrClient
         }
     }
 
+    /// <summary>
+    /// Deletes a specific episode file via Sonarr's API so Sonarr stays in sync
+    /// without needing a full series rescan.
+    /// </summary>
+    private async Task<bool> DeleteSonarrEpisodeFileAsync(HttpClient client, int sonarrEpisodeId, string? filePath, CancellationToken ct)
+    {
+        try
+        {
+            // Get the episode file ID from the episode details
+            var episodeDetail = await client.GetFromJsonAsync<ArrEpisodeDetail>(
+                $"api/v3/episode/{sonarrEpisodeId}", ct).ConfigureAwait(false);
+
+            if (episodeDetail?.EpisodeFileId is null or 0)
+            {
+                _logger.LogWarning("MediarrGuard: No episode file ID found in Sonarr for episode {Id}", sonarrEpisodeId);
+                return false;
+            }
+
+            var response = await client.DeleteAsync(
+                $"api/v3/episodefile/{episodeDetail.EpisodeFileId}", ct).ConfigureAwait(false);
+
+            if (response.IsSuccessStatusCode)
+            {
+                _logger.LogInformation("MediarrGuard: Deleted episode file {FileId} via Sonarr API", episodeDetail.EpisodeFileId);
+                return true;
+            }
+
+            _logger.LogWarning("MediarrGuard: Sonarr returned {Status} when deleting episode file {FileId}",
+                response.StatusCode, episodeDetail.EpisodeFileId);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "MediarrGuard: Failed to delete episode file via Sonarr API, will fall back to disk deletion");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Deletes a specific movie file via Radarr's API.
+    /// </summary>
+    private async Task<bool> DeleteRadarrMovieFileAsync(HttpClient client, int radarrMovieId, string? filePath, CancellationToken ct)
+    {
+        try
+        {
+            // Get movie details to find the file ID
+            var movieDetail = await client.GetFromJsonAsync<ArrMovieDetail>(
+                $"api/v3/movie/{radarrMovieId}", ct).ConfigureAwait(false);
+
+            if (movieDetail?.MovieFileId is null or 0)
+            {
+                _logger.LogWarning("MediarrGuard: No movie file ID found in Radarr for movie {Id}", radarrMovieId);
+                return false;
+            }
+
+            var response = await client.DeleteAsync(
+                $"api/v3/moviefile/{movieDetail.MovieFileId}", ct).ConfigureAwait(false);
+
+            if (response.IsSuccessStatusCode)
+            {
+                _logger.LogInformation("MediarrGuard: Deleted movie file {FileId} via Radarr API", movieDetail.MovieFileId);
+                return true;
+            }
+
+            _logger.LogWarning("MediarrGuard: Radarr returned {Status} when deleting movie file {FileId}",
+                response.StatusCode, movieDetail.MovieFileId);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "MediarrGuard: Failed to delete movie file via Radarr API, will fall back to disk deletion");
+            return false;
+        }
+    }
+
     private void ScheduleLibraryScan(BaseItem item)
     {
-        // Queue a library scan for the parent folder so Jellyfin picks up the replacement
+        // Queue library scans at 5 and 15 minutes so replacements get picked up
+        // even if the download takes longer than expected
         _ = Task.Run(async () =>
         {
-            try
-            {
-                // Wait for the download to have a chance to complete
-                await Task.Delay(TimeSpan.FromMinutes(5)).ConfigureAwait(false);
+            var scanDelays = new[] { TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(15) };
 
-                _logger.LogInformation("MediarrGuard: Triggering Jellyfin library scan for replaced media");
-                await _libraryManager.ValidateMediaLibrary(new Progress<double>(), CancellationToken.None)
-                    .ConfigureAwait(false);
-            }
-            catch (Exception ex)
+            foreach (var delay in scanDelays)
             {
-                _logger.LogDebug(ex, "MediarrGuard: Library scan failed (non-critical)");
+                try
+                {
+                    await Task.Delay(delay).ConfigureAwait(false);
+
+                    _logger.LogInformation("MediarrGuard: Triggering Jellyfin library scan ({Delay} min delay)", delay.TotalMinutes);
+                    await _libraryManager.ValidateMediaLibrary(new Progress<double>(), CancellationToken.None)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "MediarrGuard: Library scan failed (non-critical)");
+                }
             }
         });
     }
@@ -286,5 +368,23 @@ public class ArrClient
 
         [JsonPropertyName("path")]
         public string? Path { get; set; }
+    }
+
+    private sealed class ArrEpisodeDetail
+    {
+        [JsonPropertyName("id")]
+        public int Id { get; set; }
+
+        [JsonPropertyName("episodeFileId")]
+        public int EpisodeFileId { get; set; }
+    }
+
+    private sealed class ArrMovieDetail
+    {
+        [JsonPropertyName("id")]
+        public int Id { get; set; }
+
+        [JsonPropertyName("movieFileId")]
+        public int MovieFileId { get; set; }
     }
 }
