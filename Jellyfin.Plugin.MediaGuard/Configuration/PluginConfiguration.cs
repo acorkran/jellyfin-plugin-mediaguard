@@ -63,4 +63,12 @@ public class PluginConfiguration : BasePluginConfiguration
     /// the item must fail repeatedly to be considered genuinely corrupt.
     /// </summary>
     public int ConsecutiveFailuresRequired { get; set; } = 3;
+
+    /// <summary>
+    /// Gets or sets the number of hours within which consecutive failures must
+    /// occur to count toward the threshold. Failures older than this window are
+    /// discarded, preventing occasional skips from accumulating over days/weeks
+    /// into false corruption flags.
+    /// </summary>
+    public int FailureWindowHours { get; set; } = 4;
 }

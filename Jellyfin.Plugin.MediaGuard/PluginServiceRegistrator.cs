@@ -19,6 +19,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<CooldownTracker>();
         serviceCollection.AddSingleton<FailureCounter>();
         serviceCollection.AddSingleton<ArrClient>();
+        serviceCollection.AddSingleton<MediaProber>();
         serviceCollection.AddScoped<IEventConsumer<PlaybackStopEventArgs>, PlaybackFailureNotifier>();
     }
 }

@@ -98,6 +98,14 @@
                                 Number of consecutive low-progress stops required before flagging as corrupt. Default: 3
                             </div>
                         </div>
+                        <div class="inputContainer">
+                            <label class="inputLabel" for="FailureWindowHours">Failure Window (hours)</label>
+                            <input id="FailureWindowHours" type="number" min="1" max="72" is="emby-input" />
+                            <div class="fieldDescription">
+                                Failures must occur within this time window to count. Older failures are discarded,
+                                preventing occasional skips from accumulating into false positives. Default: 4 hours
+                            </div>
+                        </div>
                     </div>
 
                     <div>
@@ -128,6 +136,7 @@
                         document.querySelector('#CooldownHours').value = config.CooldownHours;
                         document.querySelector('#MinPlaybackDurationSeconds').value = config.MinPlaybackDurationSeconds;
                         document.querySelector('#ConsecutiveFailuresRequired').value = config.ConsecutiveFailuresRequired;
+                        document.querySelector('#FailureWindowHours').value = config.FailureWindowHours;
                         Dashboard.hideLoadingMsg();
                     });
                 });
@@ -146,6 +155,7 @@
                         config.CooldownHours = parseInt(document.querySelector('#CooldownHours').value);
                         config.MinPlaybackDurationSeconds = parseInt(document.querySelector('#MinPlaybackDurationSeconds').value);
                         config.ConsecutiveFailuresRequired = parseInt(document.querySelector('#ConsecutiveFailuresRequired').value);
+                        config.FailureWindowHours = parseInt(document.querySelector('#FailureWindowHours').value);
                         ApiClient.updatePluginConfiguration(MediaGuardConfig.pluginUniqueId, config).then(function () {
                             Dashboard.processPluginConfigurationUpdateResult();
                         });

@@ -22,6 +22,7 @@ public class PlaybackFailureNotifier : IEventConsumer<PlaybackStopEventArgs>
     private readonly CooldownTracker _cooldownTracker;
     private readonly FailureCounter _failureCounter;
     private readonly ISessionManager _sessionManager;
+    private readonly MediaProber _mediaProber;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="PlaybackFailureNotifier"/> class.
@@ -31,13 +32,15 @@ public class PlaybackFailureNotifier : IEventConsumer<PlaybackStopEventArgs>
         ArrClient arrClient,
         CooldownTracker cooldownTracker,
         FailureCounter failureCounter,
-        ISessionManager sessionManager)
+        ISessionManager sessionManager,
+        MediaProber mediaProber)
     {
         _logger = logger;
         _arrClient = arrClient;
         _cooldownTracker = cooldownTracker;
         _failureCounter = failureCounter;
         _sessionManager = sessionManager;
+        _mediaProber = mediaProber;
     }
 
     /// <inheritdoc />
@@ -76,7 +79,9 @@ public class PlaybackFailureNotifier : IEventConsumer<PlaybackStopEventArgs>
 
             if (percentPlayed > config.FailureThresholdPercent)
             {
-                // Normal stop, user just stopped watching
+                // Normal stop — clear any accumulated failure count for this item,
+                // since a successful playback proves the file isn't corrupt.
+                _failureCounter.Reset(item.Id);
                 return;
             }
 
@@ -92,13 +97,33 @@ public class PlaybackFailureNotifier : IEventConsumer<PlaybackStopEventArgs>
                 return;
             }
 
+            // Check if this is an episode transition — if the user's session is now
+            // playing a different item, this stop was just a normal transition
+            // (auto-play next episode, manual skip to next, etc.), not a failure.
+            var activeSession = _sessionManager.Sessions
+                .FirstOrDefault(s =>
+                    s.UserId != Guid.Empty
+                    && s.NowPlayingItem != null
+                    && s.NowPlayingItem.Id != item.Id
+                    && s.LastPlaybackCheckIn >= DateTime.UtcNow.AddSeconds(-30));
+
+            if (activeSession is not null)
+            {
+                _logger.LogDebug(
+                    "MediarrGuard: {Name} stop is an episode transition (now playing {NewItem}), ignoring",
+                    item.Name, activeSession.NowPlayingItem.Name);
+                return;
+            }
+
             _logger.LogWarning(
                 "MediarrGuard: {Name} playback stopped at {Percent:F1}% (below {Threshold}% threshold), recording failure",
                 item.Name, percentPlayed, config.FailureThresholdPercent);
         }
 
-        // Track consecutive failures — only act once the threshold is reached
-        var failureCount = _failureCounter.RecordFailure(item.Id);
+        // Track consecutive failures — only act once the threshold is reached.
+        // Failures older than the configured window are discarded so that
+        // occasional skips spread across days/weeks don't accumulate.
+        var failureCount = _failureCounter.RecordFailure(item.Id, config.FailureWindowHours);
         if (failureCount < config.ConsecutiveFailuresRequired)
         {
             _logger.LogInformation(
@@ -114,8 +139,24 @@ public class PlaybackFailureNotifier : IEventConsumer<PlaybackStopEventArgs>
             return;
         }
 
+        // Verify the file is actually corrupt with ffprobe before taking destructive action.
+        // Playback heuristics can produce false positives (intro skips, transitions, etc.)
+        // but ffprobe gives a definitive answer.
+        if (!string.IsNullOrEmpty(item.Path))
+        {
+            var isActuallyCorrupt = await _mediaProber.IsFileCorruptAsync(item.Path).ConfigureAwait(false);
+            if (!isActuallyCorrupt)
+            {
+                _logger.LogInformation(
+                    "MediarrGuard: {Name} reached failure threshold but ffprobe says file is healthy — false positive, resetting",
+                    item.Name);
+                _failureCounter.Reset(item.Id);
+                return;
+            }
+        }
+
         _logger.LogWarning(
-            "MediarrGuard: {Name} has failed {Count} consecutive times — flagging as corrupt",
+            "MediarrGuard: {Name} has failed {Count} consecutive times and ffprobe confirms corruption — flagging",
             item.Name, failureCount);
 
         // Reset counter now that we're acting on it
